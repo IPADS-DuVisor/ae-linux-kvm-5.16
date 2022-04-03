@@ -74,10 +74,12 @@ int kvm_arch_init(void *opaque)
 {
 	const char *str;
 
+#if 0
 	if (!riscv_isa_extension_available(NULL, h)) {
 		kvm_info("hypervisor extension not available\n");
 		return -ENODEV;
 	}
+#endif
 
 	if (sbi_spec_is_0_1()) {
 		kvm_info("require SBI v0.2 or higher\n");

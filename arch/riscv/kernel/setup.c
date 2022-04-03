@@ -253,6 +253,7 @@ static void __init init_resources(void)
 static void __init parse_dtb(void)
 {
 	/* Early scan of device tree from init memory */
+#if 0
 	if (early_init_dt_scan(dtb_early_va)) {
 		const char *name = of_flat_dt_get_machine_name();
 
@@ -264,6 +265,10 @@ static void __init parse_dtb(void)
 	}
 
 	pr_err("No DTB passed to the kernel\n");
+#else
+	if (!early_init_dt_scan(dtb_early_va))
+        pr_err("No DTB passed to the kernel\n");
+#endif
 #ifdef CONFIG_CMDLINE_FORCE
 	strscpy(boot_command_line, CONFIG_CMDLINE, COMMAND_LINE_SIZE);
 	pr_info("Forcing kernel command line to: %s\n", boot_command_line);
