@@ -219,7 +219,11 @@ int kvm_riscv_guest_timer_init(struct kvm *kvm)
 	struct kvm_guest_timer *gt = &kvm->arch.timer;
 
 	riscv_cs_get_mult_shift(&gt->nsec_mult, &gt->nsec_shift);
+#if 0
 	gt->time_delta = -get_cycles64();
+#else
+	gt->time_delta = 0;
+#endif
 
 	return 0;
 }

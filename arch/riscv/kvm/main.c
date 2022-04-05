@@ -17,6 +17,17 @@
 long kvm_arch_dev_ioctl(struct file *filp,
 			unsigned int ioctl, unsigned long arg)
 {
+    if (ioctl == KVM_HARTID_TO_CPUID) {
+        void __user *argp = (void __user *)arg;
+        int hartid, cpu;
+        if (copy_from_user(&hartid, argp, sizeof(hartid)))
+            return -EFAULT;
+        for_each_cpu(cpu, cpu_online_mask) {
+            if (cpuid_to_hartid_map(cpu) == hartid) {
+                return cpu;
+            }
+        }
+    }
 	return -EINVAL;
 }
 

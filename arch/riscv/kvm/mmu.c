@@ -203,7 +203,11 @@ static int stage2_set_pte(struct kvm *kvm, u32 level,
 
 	*ptep = *new_pte;
 	if (stage2_pte_leaf(ptep))
+#if 0
 		stage2_remote_tlb_flush(kvm, current_level, addr);
+#else
+        asm volatile(".word 0x62000073\n");
+#endif
 
 	return 0;
 }

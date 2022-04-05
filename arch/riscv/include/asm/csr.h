@@ -180,10 +180,18 @@
 #define CSR_HEDELEG		0x602
 #define CSR_HIDELEG		0x603
 #define CSR_HIE			0x604
+#if 0
 #define CSR_HTIMEDELTA		0x605
+#else
+#define CSR_HTIMEDELTA		0x805
+#endif
 #define CSR_HCOUNTEREN		0x606
 #define CSR_HGEIE		0x607
+#if 0
 #define CSR_HTIMEDELTAH		0x615
+#else
+#define CSR_HTIMEDELTAH		0x815
+#endif
 #define CSR_HTVAL		0x643
 #define CSR_HIP			0x644
 #define CSR_HVIP		0x645
