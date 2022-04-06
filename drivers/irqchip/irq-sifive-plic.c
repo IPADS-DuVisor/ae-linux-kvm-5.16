@@ -277,6 +277,9 @@ static int plic_starting_cpu(unsigned int cpu)
 	return 0;
 }
 
+#define VINTERRUPTS_OFFSET  0x1f00000
+unsigned long *vinterrupts_mmio = NULL;
+EXPORT_SYMBOL(vinterrupts_mmio);
 static int __init plic_init(struct device_node *node,
 		struct device_node *parent)
 {
@@ -294,6 +297,7 @@ static int __init plic_init(struct device_node *node,
 		error = -EIO;
 		goto out_free_priv;
 	}
+    vinterrupts_mmio = priv->regs + VINTERRUPTS_OFFSET;
 
 	error = -EINVAL;
 	of_property_read_u32(node, "riscv,ndev", &nr_irqs);

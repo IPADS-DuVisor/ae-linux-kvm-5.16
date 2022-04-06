@@ -651,10 +651,20 @@ int kvm_riscv_stage2_map(struct kvm_vcpu *vcpu,
 	struct vm_area_struct *vma;
 	struct kvm *kvm = vcpu->kvm;
 	struct kvm_mmu_page_cache *pcache = &vcpu->arch.mmu_page_cache;
-	bool logging = (memslot->dirty_bitmap &&
-			!(memslot->flags & KVM_MEM_READONLY)) ? true : false;
+    bool is_vplic = (0xc000000 <= gpa && gpa < (0xc000000 + 0x2000000));
+	bool logging = false;
 	unsigned long vma_pagesize, mmu_seq;
 
+    if (!is_vplic)
+        logging = (memslot->dirty_bitmap &&
+                !(memslot->flags & KVM_MEM_READONLY)) ? true : false;
+    if (unlikely(is_vplic)) {
+        printk("%s:%d hva: %lx, gpa: %llx\n", __func__, __LINE__,
+                hva, gpa);
+        writeable = true;
+        vma_pagesize = PAGE_SIZE;
+        goto vplic_skip1;
+    }
 	mmap_read_lock(current->mm);
 
 	vma = find_vma_intersection(current->mm, hva, hva + 1);
@@ -684,6 +694,7 @@ int kvm_riscv_stage2_map(struct kvm_vcpu *vcpu,
 		return -EFAULT;
 	}
 
+vplic_skip1:
 	/* We need minimum second+third level pages */
 	ret = stage2_cache_topup(pcache, stage2_pgd_levels,
 				 KVM_MMU_PAGE_CACHE_NR_OBJS);
@@ -694,6 +705,10 @@ int kvm_riscv_stage2_map(struct kvm_vcpu *vcpu,
 
 	mmu_seq = kvm->mmu_notifier_seq;
 
+    if (unlikely(is_vplic)) {
+        hfn = gpa >> PAGE_SHIFT;
+        goto vplic_skip2;
+    }
 	hfn = gfn_to_pfn_prot(kvm, gfn, is_write, &writeable);
 	if (hfn == KVM_PFN_ERR_HWPOISON) {
 		send_sig_mceerr(BUS_MCEERR_AR, (void __user *)hva,
@@ -710,6 +725,7 @@ int kvm_riscv_stage2_map(struct kvm_vcpu *vcpu,
 	if (logging && !is_write)
 		writeable = false;
 
+vplic_skip2:
 	spin_lock(&kvm->mmu_lock);
 
 	if (mmu_notifier_retry(kvm, mmu_seq))

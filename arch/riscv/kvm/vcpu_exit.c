@@ -433,6 +433,19 @@ static int stage2_page_fault(struct kvm_vcpu *vcpu, struct kvm_run *run,
 
 	if (kvm_is_error_hva(hva) ||
 	    (trap->scause == EXC_STORE_GUEST_PAGE_FAULT && !writeable)) {
+#if 1
+        bool is_vplic = (0xc000000 <= fault_addr && fault_addr < (0xc000000 + 0x2000000));
+        if (unlikely(is_vplic)) {
+            printk("%s:%d err: %d, gpa: %lx, scause: %ld\n", __func__, __LINE__,
+                    kvm_is_error_hva(hva), fault_addr, trap->scause);
+            ret = kvm_riscv_stage2_map(vcpu, memslot, fault_addr, hva,
+                    (trap->scause == EXC_STORE_GUEST_PAGE_FAULT) ? true : false);
+            if (ret < 0)
+                return ret;
+
+            return 1;
+        }
+#endif
 		switch (trap->scause) {
 		case EXC_LOAD_GUEST_PAGE_FAULT:
 			return emulate_load(vcpu, run, fault_addr,

@@ -380,6 +380,8 @@ static int kvm_riscv_vcpu_get_reg(struct kvm_vcpu *vcpu,
 	return -EINVAL;
 }
 
+#define VINTERRUPTS_IRQ_OFFSET 10
+#define FIRESIM_IRQ_OFFSET 5
 long kvm_arch_vcpu_async_ioctl(struct file *filp,
 			       unsigned int ioctl, unsigned long arg)
 {
@@ -394,8 +396,16 @@ long kvm_arch_vcpu_async_ioctl(struct file *filp,
 
 		if (irq.irq == KVM_INTERRUPT_SET)
 			return kvm_riscv_vcpu_set_interrupt(vcpu, IRQ_VS_EXT);
-		else
+		else if (irq.irq == KVM_INTERRUPT_UNSET)
 			return kvm_riscv_vcpu_unset_interrupt(vcpu, IRQ_VS_EXT);
+        else {
+            int virq = irq.irq;
+            if (virq >= VINTERRUPTS_IRQ_OFFSET) {
+                return kvm_riscv_vcpu_set_interrupt(vcpu, virq);
+            } else if (virq <= -VINTERRUPTS_IRQ_OFFSET) {
+                return kvm_riscv_vcpu_unset_interrupt(vcpu, -virq);
+            }
+        }
 	}
 
 	return -ENOIOCTLCMD;
@@ -506,8 +516,11 @@ void kvm_riscv_vcpu_sync_interrupts(struct kvm_vcpu *vcpu)
 	}
 }
 
+extern unsigned long *vinterrupts_mmio;
+static unsigned long set_cnt = 0;
 int kvm_riscv_vcpu_set_interrupt(struct kvm_vcpu *vcpu, unsigned int irq)
 {
+#if 0
 	if (irq != IRQ_VS_SOFT &&
 	    irq != IRQ_VS_TIMER &&
 	    irq != IRQ_VS_EXT)
@@ -518,12 +531,34 @@ int kvm_riscv_vcpu_set_interrupt(struct kvm_vcpu *vcpu, unsigned int irq)
 	set_bit(irq, &vcpu->arch.irqs_pending_mask);
 
 	kvm_vcpu_kick(vcpu);
+#else
+    if (irq < VINTERRUPTS_IRQ_OFFSET) {
+        if (irq != IRQ_VS_SOFT &&
+                irq != IRQ_VS_TIMER)
+            return -EINVAL;
+
+        set_bit(irq, &vcpu->arch.irqs_pending);
+        smp_mb__before_atomic();
+        set_bit(irq, &vcpu->arch.irqs_pending_mask);
+
+        kvm_vcpu_kick(vcpu);
+    } else {
+        set_bit(IRQ_VS_EXT, &vcpu->arch.irqs_pending);
+        smp_mb__before_atomic();
+        set_bit(IRQ_VS_EXT, &vcpu->arch.irqs_pending_mask);
+        
+        writel(readl(vinterrupts_mmio) | (1 << (irq - FIRESIM_IRQ_OFFSET)),
+                vinterrupts_mmio);
+        kvm_vcpu_wake_up(vcpu);
+    }
+#endif
 
 	return 0;
 }
 
 int kvm_riscv_vcpu_unset_interrupt(struct kvm_vcpu *vcpu, unsigned int irq)
 {
+#if 0
 	if (irq != IRQ_VS_SOFT &&
 	    irq != IRQ_VS_TIMER &&
 	    irq != IRQ_VS_EXT)
@@ -532,6 +567,24 @@ int kvm_riscv_vcpu_unset_interrupt(struct kvm_vcpu *vcpu, unsigned int irq)
 	clear_bit(irq, &vcpu->arch.irqs_pending);
 	smp_mb__before_atomic();
 	set_bit(irq, &vcpu->arch.irqs_pending_mask);
+#else
+    if (irq < VINTERRUPTS_IRQ_OFFSET) {
+        if (irq != IRQ_VS_SOFT &&
+                irq != IRQ_VS_TIMER)
+            return -EINVAL;
+
+        clear_bit(irq, &vcpu->arch.irqs_pending);
+        smp_mb__before_atomic();
+        set_bit(irq, &vcpu->arch.irqs_pending_mask);
+    } else {
+        clear_bit(IRQ_VS_EXT, &vcpu->arch.irqs_pending);
+        smp_mb__before_atomic();
+        set_bit(IRQ_VS_EXT, &vcpu->arch.irqs_pending_mask);
+        
+        writel(readl(vinterrupts_mmio) & ~(1 << (irq - FIRESIM_IRQ_OFFSET)),
+                vinterrupts_mmio);
+    }
+#endif
 
 	return 0;
 }
