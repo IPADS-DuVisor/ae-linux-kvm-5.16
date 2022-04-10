@@ -520,7 +520,7 @@ extern unsigned long *vinterrupts_mmio;
 static unsigned long set_cnt = 0;
 int kvm_riscv_vcpu_set_interrupt(struct kvm_vcpu *vcpu, unsigned int irq)
 {
-#if 0
+#if 1
 	if (irq != IRQ_VS_SOFT &&
 	    irq != IRQ_VS_TIMER &&
 	    irq != IRQ_VS_EXT)
@@ -547,6 +547,10 @@ int kvm_riscv_vcpu_set_interrupt(struct kvm_vcpu *vcpu, unsigned int irq)
         smp_mb__before_atomic();
         set_bit(IRQ_VS_EXT, &vcpu->arch.irqs_pending_mask);
         
+        //if (irq == 17 && ++set_cnt % 1000 == 0)
+        //    printk("%s:%d SET cnt %lu, irq %u, vinterrupts %lx, hip %lx\n",
+        //            __func__, __LINE__, set_cnt, irq,
+        //            readl(vinterrupts_mmio), csr_read(CSR_HIP));
         writel(readl(vinterrupts_mmio) | (1 << (irq - FIRESIM_IRQ_OFFSET)),
                 vinterrupts_mmio);
         kvm_vcpu_wake_up(vcpu);
@@ -558,7 +562,7 @@ int kvm_riscv_vcpu_set_interrupt(struct kvm_vcpu *vcpu, unsigned int irq)
 
 int kvm_riscv_vcpu_unset_interrupt(struct kvm_vcpu *vcpu, unsigned int irq)
 {
-#if 0
+#if 1
 	if (irq != IRQ_VS_SOFT &&
 	    irq != IRQ_VS_TIMER &&
 	    irq != IRQ_VS_EXT)
@@ -581,6 +585,8 @@ int kvm_riscv_vcpu_unset_interrupt(struct kvm_vcpu *vcpu, unsigned int irq)
         smp_mb__before_atomic();
         set_bit(IRQ_VS_EXT, &vcpu->arch.irqs_pending_mask);
         
+        //printk("%s:%d CLEAR irq %u, vinterrupts %lx, hip %lx\n",
+        //        __func__, __LINE__, irq, readl(vinterrupts_mmio), csr_read(CSR_HIP));
         writel(readl(vinterrupts_mmio) & ~(1 << (irq - FIRESIM_IRQ_OFFSET)),
                 vinterrupts_mmio);
     }
@@ -732,6 +738,11 @@ static void kvm_riscv_update_hvip(struct kvm_vcpu *vcpu)
 	csr_write(CSR_HVIP, csr->hvip);
 }
 
+bool stat_vmexit = false;
+static unsigned long prev_cause = -1;
+static unsigned long exit_time = 0;
+unsigned long cause_cnt[16] = {0};
+unsigned long cause_time[16] = {0};
 int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu)
 {
 	int ret;
@@ -825,7 +836,49 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu)
 
 		guest_enter_irqoff();
 
+        if (stat_vmexit && (0 <= prev_cause && prev_cause < 10)) {
+            unsigned long cur_time = csr_read(CSR_TIME);
+            // offset 0 for total
+            cause_cnt[0]++;
+            cause_time[0] += (cur_time - exit_time);
+            cause_cnt[prev_cause]++;
+            cause_time[prev_cause] += (cur_time - exit_time);
+        }
+
 		__kvm_riscv_switch_to(&vcpu->arch);
+
+        if (stat_vmexit) {
+            unsigned long cause = csr_read(CSR_SCAUSE);
+            exit_time = csr_read(CSR_TIME);
+            switch (cause) {
+                case EXC_VIRTUAL_INST_FAULT:
+                    prev_cause = 1;
+                    break;
+                case EXC_INST_GUEST_PAGE_FAULT:
+                    prev_cause = 2;
+                    break;
+                case EXC_LOAD_GUEST_PAGE_FAULT:
+                    prev_cause = 3;
+                    break;
+                case EXC_STORE_GUEST_PAGE_FAULT:
+                    prev_cause = 4;
+                    break;
+                case EXC_SUPERVISOR_SYSCALL:
+                    prev_cause = 5;
+                    break;
+                default: {
+                    unsigned long hwirq = cause & ~CAUSE_IRQ_FLAG;
+                    if (hwirq == RV_IRQ_SOFT) {
+                        prev_cause = 6;
+                    } else if (hwirq == RV_IRQ_TIMER) {
+                        prev_cause = 7;
+                    } else {
+                        prev_cause = 8;
+                    }
+                    break;
+                }
+            }
+        }
 
 		vcpu->mode = OUTSIDE_GUEST_MODE;
 		vcpu->stat.exits++;

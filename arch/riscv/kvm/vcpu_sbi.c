@@ -72,6 +72,9 @@ static void kvm_sbi_system_shutdown(struct kvm_vcpu *vcpu,
 	run->exit_reason = KVM_EXIT_SYSTEM_EVENT;
 }
 
+extern bool stat_vmexit;
+extern unsigned long cause_cnt[16];
+extern unsigned long cause_time[16];
 int kvm_riscv_vcpu_sbi_ecall(struct kvm_vcpu *vcpu, struct kvm_run *run)
 {
 	ulong hmask;
@@ -161,6 +164,26 @@ int kvm_riscv_vcpu_sbi_ecall(struct kvm_vcpu *vcpu, struct kvm_run *run)
 		else
 			sbi_remote_hfence_vvma_asid(cpumask_bits(&hm),
 						cp->a1, cp->a2, cp->a3);
+		break;
+	case SBI_EXT_0_1_DEBUG_START: {
+        int i = 0;
+        for (; i < 16; i++) {
+            cause_cnt[i] = 0;
+            cause_time[i] = 0;
+        }
+        stat_vmexit = true;
+		break;
+    }
+	case SBI_EXT_0_1_DEBUG_END:
+        stat_vmexit = false;
+        printk("DEBUG vmexit total time %lu, cnt %lu, avg %lu\n",
+                cause_time[0], cause_cnt[0], cause_time[0] / cause_cnt[0]);
+        printk("time %lu, %lu, %lu, %lu \n\t %lu, %lu, %lu, %lu\n",
+                cause_time[1], cause_time[2], cause_time[3], cause_time[4],
+                cause_time[5], cause_time[6], cause_time[7], cause_time[8]);
+        printk("cnt %lu, %lu, %lu, %lu \n\t %lu, %lu, %lu, %lu\n",
+                cause_cnt[1], cause_cnt[2], cause_cnt[3], cause_cnt[4],
+                cause_cnt[5], cause_cnt[6], cause_cnt[7], cause_cnt[8]);
 		break;
 	default:
 		/* Return error for unsupported SBI calls */
