@@ -651,8 +651,7 @@ int kvm_riscv_stage2_map(struct kvm_vcpu *vcpu,
 	struct vm_area_struct *vma;
 	struct kvm *kvm = vcpu->kvm;
 	struct kvm_mmu_page_cache *pcache = &vcpu->arch.mmu_page_cache;
-    //bool is_vplic = (0xc000000 <= gpa && gpa < (0xc000000 + 0x2000000));
-    bool is_vplic = false;
+    bool is_vplic = (0xc000000 <= gpa && gpa < (0xc000000 + 0x2000000));
 	bool logging = false;
 	unsigned long vma_pagesize, mmu_seq;
 

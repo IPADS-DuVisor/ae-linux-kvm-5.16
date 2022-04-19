@@ -417,6 +417,8 @@ static int emulate_store(struct kvm_vcpu *vcpu, struct kvm_run *run,
 	return 0;
 }
 
+static unsigned long mmio_gfn[32] = {0};
+static unsigned long mmio_cnt[32] = {0};
 static int stage2_page_fault(struct kvm_vcpu *vcpu, struct kvm_run *run,
 			     struct kvm_cpu_trap *trap)
 {
@@ -433,7 +435,7 @@ static int stage2_page_fault(struct kvm_vcpu *vcpu, struct kvm_run *run,
 
 	if (kvm_is_error_hva(hva) ||
 	    (trap->scause == EXC_STORE_GUEST_PAGE_FAULT && !writeable)) {
-#if 0
+#if 1
         bool is_vplic = (0xc000000 <= fault_addr && fault_addr < (0xc000000 + 0x2000000));
         if (unlikely(is_vplic)) {
             printk("%s:%d err: %d, gpa: %lx, scause: %ld\n", __func__, __LINE__,
@@ -448,14 +450,43 @@ static int stage2_page_fault(struct kvm_vcpu *vcpu, struct kvm_run *run,
 #endif
 		switch (trap->scause) {
 		case EXC_LOAD_GUEST_PAGE_FAULT:
-			return emulate_load(vcpu, run, fault_addr,
+			ret = emulate_load(vcpu, run, fault_addr,
 					    trap->htinst);
+            break;
 		case EXC_STORE_GUEST_PAGE_FAULT:
-			return emulate_store(vcpu, run, fault_addr,
+			ret = emulate_store(vcpu, run, fault_addr,
 					     trap->htinst);
+            break;
 		default:
-			return -EOPNOTSUPP;
+			ret = -EOPNOTSUPP;
+            break;
 		};
+        if (0x10000000 <= fault_addr && fault_addr < 0x10000000 + 0x100) {
+            return ret;
+        }
+        if (0x30000000 <= fault_addr && fault_addr < 0x30000000 + 0x10000000) {
+            fault_addr = 0x30000000;
+        }
+        if (ret == 0) {
+            unsigned long fault_gfn = fault_addr >> PAGE_SHIFT;
+            int i = 0;
+            for (; i < 32; i++) {
+                if (mmio_gfn[i] == fault_gfn) {
+                    mmio_cnt[i]++;
+                    if (mmio_cnt[i] % 10000 == 0) {
+                        printk("%s:%d >>> gfn %lx, cnt %lu\n", __func__, __LINE__, 
+                                mmio_gfn[i], mmio_cnt[i]);
+                    }
+                    break;
+                } else if (mmio_gfn[i] == 0) {
+                    mmio_gfn[i] = fault_gfn;
+                    mmio_cnt[i]++;
+                    printk("%s:%d --- fault_gfn %lx\n", __func__, __LINE__, fault_gfn);
+                    break;
+                }
+            }
+        }
+        return ret;
 	}
 
 	ret = kvm_riscv_stage2_map(vcpu, memslot, fault_addr, hva,
