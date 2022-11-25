@@ -144,12 +144,14 @@ static int system_opcode_insn(struct kvm_vcpu *vcpu,
 {
 	if ((insn & INSN_MASK_WFI) == INSN_MATCH_WFI) {
 		vcpu->stat.wfi_exit_stat++;
+#if 0
 		if (!kvm_arch_vcpu_runnable(vcpu)) {
 			srcu_read_unlock(&vcpu->kvm->srcu, vcpu->arch.srcu_idx);
 			kvm_vcpu_block(vcpu);
 			vcpu->arch.srcu_idx = srcu_read_lock(&vcpu->kvm->srcu);
 			kvm_clear_request(KVM_REQ_UNHALT, vcpu);
 		}
+#endif
 		vcpu->arch.guest_context.sepc += INSN_LEN(insn);
 		return 1;
 	}

@@ -75,6 +75,42 @@ static void kvm_sbi_system_shutdown(struct kvm_vcpu *vcpu,
 extern bool stat_vmexit;
 extern unsigned long cause_cnt[16];
 extern unsigned long cause_time[16];
+
+static inline
+void clrvipi0(unsigned long val) {
+    register long vipi_id asm("a0") = ~val;
+
+    asm volatile ("\n"
+            ".option push\n"
+            ".option norvc\n"
+
+            /* clr_vipi0 */
+            ".word 0xc8a02077\n"
+
+            ".option pop"
+            :
+            : "r"(vipi_id)
+            : "memory");
+}
+
+static inline
+unsigned long rdvipi0(void) {
+    register long vipi_id asm("a0");
+
+    asm volatile ("\n"
+            ".option push\n"
+            ".option norvc\n"
+
+            /* rdvipi0 */
+            ".word 0xc8101577\n"
+
+            ".option pop"
+            : "=r"(vipi_id)
+            :
+            : "memory");
+
+    return vipi_id;
+}
 int kvm_riscv_vcpu_sbi_ecall(struct kvm_vcpu *vcpu, struct kvm_run *run)
 {
 	ulong hmask;
@@ -110,9 +146,16 @@ int kvm_riscv_vcpu_sbi_ecall(struct kvm_vcpu *vcpu, struct kvm_run *run)
 		kvm_riscv_vcpu_timer_next_event(vcpu, next_cycle);
 		break;
 	case SBI_EXT_0_1_CLEAR_IPI:
+        pr_err("--- SBI_EXT_0_1_CLEAR_IPI %lu %lu %lu %lu\n",
+                cp->a0, cp->a1, cp->a2, cp->a3);
+#if 0
 		kvm_riscv_vcpu_unset_interrupt(vcpu, IRQ_VS_SOFT);
+#endif
 		break;
 	case SBI_EXT_0_1_SEND_IPI:
+        pr_err("--- line %lu: %lu %lu %lu rdvipi0 %lx\n",
+                cp->a0, cp->a1, cp->a2, cp->a3, rdvipi0());
+#if 0
 		if (cp->a0)
 			hmask = kvm_riscv_vcpu_unpriv_read(vcpu, false, cp->a0,
 							   &utrap);
@@ -128,6 +171,7 @@ int kvm_riscv_vcpu_sbi_ecall(struct kvm_vcpu *vcpu, struct kvm_run *run)
 			rvcpu = kvm_get_vcpu_by_id(vcpu->kvm, i);
 			kvm_riscv_vcpu_set_interrupt(rvcpu, IRQ_VS_SOFT);
 		}
+#endif
 		break;
 	case SBI_EXT_0_1_SHUTDOWN:
 		kvm_sbi_system_shutdown(vcpu, run, KVM_SYSTEM_EVENT_SHUTDOWN);
