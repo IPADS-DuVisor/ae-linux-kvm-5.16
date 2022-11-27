@@ -111,6 +111,11 @@ unsigned long rdvipi0(void) {
 
     return vipi_id;
 }
+
+#define SBI_TEST_TIMING_START (0xC200000)
+#define SBI_TEST_TIMING_END (0xC200001)
+#define SBI_TEST_LOCAL_SBI (0xC200002)
+static unsigned long start_cycle, end_cycle;
 int kvm_riscv_vcpu_sbi_ecall(struct kvm_vcpu *vcpu, struct kvm_run *run)
 {
 	ulong hmask;
@@ -228,6 +233,18 @@ int kvm_riscv_vcpu_sbi_ecall(struct kvm_vcpu *vcpu, struct kvm_run *run)
         printk("cnt %lu, %lu, %lu, %lu \n\t %lu, %lu, %lu, %lu\n",
                 cause_cnt[1], cause_cnt[2], cause_cnt[3], cause_cnt[4],
                 cause_cnt[5], cause_cnt[6], cause_cnt[7], cause_cnt[8]);
+		break;
+	case SBI_TEST_TIMING_START:
+		printk("--- SBI_TEST_TIMING_START [%ld]\n",
+                smp_processor_id());
+		start_cycle = csr_read(CSR_CYCLE);
+		break;
+	case SBI_TEST_TIMING_END:
+		end_cycle = csr_read(CSR_CYCLE);
+		printk("--- SBI_TEST_TIMING_END [%ld] cycles %llu\n",
+                smp_processor_id(), end_cycle - start_cycle);
+		break;
+	case SBI_TEST_LOCAL_SBI:
 		break;
 	default:
 		/* Return error for unsupported SBI calls */
