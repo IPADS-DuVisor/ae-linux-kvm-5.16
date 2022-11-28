@@ -116,6 +116,53 @@ unsigned long rdvipi0(void) {
 #define SBI_TEST_TIMING_END (0xC200001)
 #define SBI_TEST_LOCAL_SBI (0xC200002)
 static unsigned long start_cycle, end_cycle;
+
+#include <linux/kthread.h>
+extern unsigned long *vinterrupts_mmio;
+extern volatile int *vplic_sm;
+
+static int vplic_thread(void *arg)
+{
+    //struct kvm_vcpu *vcpu = (struct kvm_vcpu *)arg;
+    unsigned long start, total = 0, cnt = 0, cur, min = -1, max = 0;
+    int irq = (int)arg, val, flags;
+    while (!kthread_should_stop()) {
+        cond_resched();
+        local_irq_save(flags);
+        //pr_err("%s:%d before set %d vint %x\n",
+        //        __func__, __LINE__, irq, readl(vinterrupts_mmio));
+        //kvm_riscv_vcpu_set_interrupt(vcpu, 32);
+        val = readl(vinterrupts_mmio) | (1 << (irq - 5));
+        start = csr_read(CSR_CYCLE);
+        writel(val, vinterrupts_mmio);
+        smp_rmb();
+        while (vplic_sm[0] != (cnt + 1)) {
+            smp_rmb();
+        }
+        cur = csr_read(CSR_CYCLE) - start;
+        local_irq_restore(flags);
+        total += cur;
+        min = min > cur ? cur : min;
+        max = max < cur ? cur : max;
+        if (++cnt % 1000 == 0) {
+            pr_err("\t cur cycle %lu cnt %lu min %lu max %lu\n",
+                    total, cnt, min, max);
+            min = -1;
+            max = 0;
+        }
+        if (cnt == 10000) {
+            pr_err("%s:%d total cycle %lu cnt %lu\n",
+                    __func__, __LINE__, total, cnt);
+            break;
+        }
+        smp_rmb();
+        while (vplic_sm[1] != cnt) {
+            smp_rmb();
+        }
+    }
+    return 0;
+}
+
 int kvm_riscv_vcpu_sbi_ecall(struct kvm_vcpu *vcpu, struct kvm_run *run)
 {
 	ulong hmask;
@@ -153,13 +200,21 @@ int kvm_riscv_vcpu_sbi_ecall(struct kvm_vcpu *vcpu, struct kvm_run *run)
 	case SBI_EXT_0_1_CLEAR_IPI:
         pr_err("--- SBI_EXT_0_1_CLEAR_IPI %lu %lu %lu %lu\n",
                 cp->a0, cp->a1, cp->a2, cp->a3);
+        pr_err("--- SBI_EXT_0_1_CLEAR_IPI %x\n", vplic_sm[0]);
+        vplic_sm[0] = 0;
+        writel(0, vinterrupts_mmio);
+        wake_up_process(
+                kthread_create_on_cpu(vplic_thread, (void *)cp->a0,
+                    4, "vplic_thread"));
 #if 0
 		kvm_riscv_vcpu_unset_interrupt(vcpu, IRQ_VS_SOFT);
 #endif
 		break;
 	case SBI_EXT_0_1_SEND_IPI:
-        pr_err("--- line %lu: %lu %lu %lu rdvipi0 %lx\n",
-                cp->a0, cp->a1, cp->a2, cp->a3, rdvipi0());
+        //pr_err("--- line %lu: %lu %lu %lu rdvipi0 %lx\n",
+        //        cp->a0, cp->a1, cp->a2, cp->a3, rdvipi0());
+        pr_err("--- SBI_EXT_0_1_SEND_IPI %lu %lu %lu %lu vint %x\n",
+                cp->a0, cp->a1, cp->a2, cp->a3, readl(vinterrupts_mmio));
 #if 0
 		if (cp->a0)
 			hmask = kvm_riscv_vcpu_unpriv_read(vcpu, false, cp->a0,
