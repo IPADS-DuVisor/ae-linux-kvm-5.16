@@ -163,6 +163,10 @@ static int vplic_thread(void *arg)
     return 0;
 }
 
+static unsigned long vipi_send_cnt = 0;
+unsigned long vipi_send_cycle = 0;
+unsigned long vipi_cycle = 0;
+bool vipi_sent = 0;
 int kvm_riscv_vcpu_sbi_ecall(struct kvm_vcpu *vcpu, struct kvm_run *run)
 {
 	ulong hmask;
@@ -198,6 +202,7 @@ int kvm_riscv_vcpu_sbi_ecall(struct kvm_vcpu *vcpu, struct kvm_run *run)
 		kvm_riscv_vcpu_timer_next_event(vcpu, next_cycle);
 		break;
 	case SBI_EXT_0_1_CLEAR_IPI:
+#if 0
         pr_err("--- SBI_EXT_0_1_CLEAR_IPI %lu %lu %lu %lu\n",
                 cp->a0, cp->a1, cp->a2, cp->a3);
         pr_err("--- SBI_EXT_0_1_CLEAR_IPI %x\n", vplic_sm[0]);
@@ -206,15 +211,27 @@ int kvm_riscv_vcpu_sbi_ecall(struct kvm_vcpu *vcpu, struct kvm_run *run)
         wake_up_process(
                 kthread_create_on_cpu(vplic_thread, (void *)cp->a0,
                     4, "vplic_thread"));
-#if 0
+#else
 		kvm_riscv_vcpu_unset_interrupt(vcpu, IRQ_VS_SOFT);
 #endif
 		break;
 	case SBI_EXT_0_1_SEND_IPI:
         //pr_err("--- line %lu: %lu %lu %lu rdvipi0 %lx\n",
         //        cp->a0, cp->a1, cp->a2, cp->a3, rdvipi0());
-        pr_err("--- SBI_EXT_0_1_SEND_IPI %lu %lu %lu %lu vint %x\n",
-                cp->a0, cp->a1, cp->a2, cp->a3, readl(vinterrupts_mmio));
+        //pr_err("--- SBI_EXT_0_1_SEND_IPI %lu %lu %lu %lu vint %x\n",
+        //        cp->a0, cp->a1, cp->a2, cp->a3, readl(vinterrupts_mmio));
+        vipi_send_cnt++;
+        rvcpu = kvm_get_vcpu_by_id(vcpu->kvm, cp->a0);
+        //vipi_send_cycle = csr_read(CSR_CYCLE);
+        kvm_riscv_vcpu_set_interrupt(rvcpu, IRQ_VS_SOFT);
+        //smp_rmb();
+        //while (!vipi_sent)
+        //    smp_rmb();
+        //vipi_cycle += csr_read(CSR_CYCLE) - vipi_send_cycle;
+        //vipi_sent = false;
+        //if (vipi_send_cnt == 10000)
+        //    pr_err("--- %lu %lu %lu %lu vipi_send_cycle %lu\n",
+        //            cp->a0, cp->a1, cp->a2, cp->a3, vipi_cycle);
 #if 0
 		if (cp->a0)
 			hmask = kvm_riscv_vcpu_unpriv_read(vcpu, false, cp->a0,

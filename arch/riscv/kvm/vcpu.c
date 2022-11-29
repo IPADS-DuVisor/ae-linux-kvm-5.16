@@ -664,8 +664,6 @@ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 	csr_write(CSR_VSEPC, csr->vsepc);
 	csr_write(CSR_VSCAUSE, csr->vscause);
 	csr_write(CSR_VSTVAL, csr->vstval);
-    csr->hvip &= ~(1UL << IRQ_VS_SOFT);
-    csr->hvip |= csr_read(CSR_HVIP) & (1UL << IRQ_VS_SOFT);
 	csr_write(CSR_HVIP, csr->hvip);
 	csr_write(CSR_VSATP, csr->vsatp);
 
@@ -733,12 +731,15 @@ static void kvm_riscv_check_vcpu_requests(struct kvm_vcpu *vcpu)
 	}
 }
 
+extern bool vipi_sent;
 static void kvm_riscv_update_hvip(struct kvm_vcpu *vcpu)
 {
 	struct kvm_vcpu_csr *csr = &vcpu->arch.guest_csr;
 
-    csr->hvip &= ~(1UL << IRQ_VS_SOFT);
-    csr->hvip |= csr_read(CSR_HVIP) & (1UL << IRQ_VS_SOFT);
+    if (csr->hvip & (1UL << IRQ_VS_SOFT)) {
+        smp_wmb();
+        vipi_sent = true;
+    }
 	csr_write(CSR_HVIP, csr->hvip);
 }
 
