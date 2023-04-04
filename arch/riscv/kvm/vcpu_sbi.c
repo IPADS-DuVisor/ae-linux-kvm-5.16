@@ -146,19 +146,21 @@ static int vplic_thread(void *arg)
         total += cur;
         min = min > cur ? cur : min;
         max = max < cur ? cur : max;
-        if (++cnt % 1000 == 0) {
+        if (++cnt % 100 == 0) {
             pr_err("\t cur cycle %lu cnt %lu min %lu max %lu\n",
                     total, cnt, min, max);
             min = -1;
             max = 0;
         }
         if (cnt == 10000) {
-            pr_err("%s:%d total cycle %lu cnt %lu\n",
-                    __func__, __LINE__, total, cnt);
+            pr_err("%s:%d total cycle %lu cnt %lu avg %lu\n",
+                    __func__, __LINE__, total, cnt, total / cnt);
             break;
         }
         smp_rmb();
         while (vplic_sm[1] != cnt) {
+            //pr_err("\t line %d vplic_sm[0] %lu vplic_sm[1] %lu cnt %lu\n",
+            //        __LINE__, vplic_sm[0], vplic_sm[1], cnt);
             smp_rmb();
         }
     }
@@ -204,11 +206,11 @@ int kvm_riscv_vcpu_sbi_ecall(struct kvm_vcpu *vcpu, struct kvm_run *run)
 		kvm_riscv_vcpu_timer_next_event(vcpu, next_cycle);
 		break;
 	case SBI_EXT_0_1_CLEAR_IPI:
-#if 0
-        pr_err("--- SBI_EXT_0_1_CLEAR_IPI %lu %lu %lu %lu\n",
-                cp->a0, cp->a1, cp->a2, cp->a3);
-        pr_err("--- SBI_EXT_0_1_CLEAR_IPI %x\n", vplic_sm[0]);
+#if 1
+        pr_err("--- SBI_EXT_0_1_CLEAR_IPI %lu %lu %lu %lu %u\n",
+                cp->a0, cp->a1, cp->a2, cp->a3, vplic_sm[0]);
         vplic_sm[0] = 0;
+        csr_write(CSR_VSIP, 0);
         writel(0, vinterrupts_mmio);
         wake_up_process(
                 kthread_create_on_cpu(vplic_thread, (void *)cp->a0,
@@ -220,12 +222,12 @@ int kvm_riscv_vcpu_sbi_ecall(struct kvm_vcpu *vcpu, struct kvm_run *run)
 	case SBI_EXT_0_1_SEND_IPI:
         //pr_err("--- line %lu: %lu %lu %lu rdvipi0 %lx\n",
         //        cp->a0, cp->a1, cp->a2, cp->a3, rdvipi0());
-        //pr_err("--- SBI_EXT_0_1_SEND_IPI %lu %lu %lu %lu vint %x\n",
-        //        cp->a0, cp->a1, cp->a2, cp->a3, readl(vinterrupts_mmio));
-        vipi_send_cnt++;
-        rvcpu = kvm_get_vcpu_by_id(vcpu->kvm, cp->a0);
+        pr_err("--- SBI_EXT_0_1_SEND_IPI %lu %lu %lu %lu vint %x\n",
+                cp->a0, cp->a1, cp->a2, cp->a3, readl(vinterrupts_mmio));
+        //vipi_send_cnt++;
+        //rvcpu = kvm_get_vcpu_by_id(vcpu->kvm, cp->a0);
         //vipi_send_cycle = csr_read(CSR_CYCLE);
-        kvm_riscv_vcpu_set_interrupt(rvcpu, IRQ_VS_SOFT);
+        //kvm_riscv_vcpu_set_interrupt(rvcpu, IRQ_VS_SOFT);
         //smp_rmb();
         //while (!vipi_sent)
         //    smp_rmb();
