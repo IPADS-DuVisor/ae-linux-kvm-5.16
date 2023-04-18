@@ -125,28 +125,26 @@ extern volatile int *vplic_sm;
 
 static int vplic_thread(void *arg)
 {
-    //struct kvm_vcpu *vcpu = (struct kvm_vcpu *)arg;
+    struct kvm_vcpu *vcpu = (struct kvm_vcpu *)arg;
     unsigned long start, total = 0, cnt = 0, cur, min = -1, max = 0;
-    int irq = (int)arg, val, flags;
+    int irq = IRQ_VS_EXT, val, flags;
     while (!kthread_should_stop()) {
         cond_resched();
         local_irq_save(flags);
-        //pr_err("%s:%d before set %d vint %x\n",
-        //        __func__, __LINE__, irq, readl(vinterrupts_mmio));
-        //kvm_riscv_vcpu_set_interrupt(vcpu, 32);
-        val = readl(vinterrupts_mmio) | (1 << (irq - 5));
+
         start = csr_read(CSR_CYCLE);
-        writel(val, vinterrupts_mmio);
+        kvm_riscv_vcpu_set_interrupt(vcpu, irq);
         smp_rmb();
         while (vplic_sm[0] != (cnt + 1)) {
             smp_rmb();
         }
         cur = csr_read(CSR_CYCLE) - start;
+
         local_irq_restore(flags);
         total += cur;
         min = min > cur ? cur : min;
         max = max < cur ? cur : max;
-        if (++cnt % 100 == 0) {
+        if (++cnt % 1000 == 0) {
             pr_err("\t cur cycle %lu cnt %lu min %lu max %lu\n",
                     total, cnt, min, max);
             min = -1;
@@ -216,11 +214,11 @@ int kvm_riscv_vcpu_sbi_ecall(struct kvm_vcpu *vcpu, struct kvm_run *run)
                 kthread_create_on_cpu(vplic_thread, (void *)cp->a0,
                     4, "vplic_thread"));
 #else
-		kvm_riscv_vcpu_unset_interrupt(vcpu, IRQ_VS_SOFT);
+		kvm_riscv_vcpu_unset_interrupt(vcpu, IRQ_VS_EXT);
         csr_write(CSR_VSIP, 0);
-        pr_err("--- [%d] SBI_EXT_0_1_CLEAR_IPI %lu %lu %lu %lu %u\n",
-                smp_processor_id(),
-                cp->a0, cp->a1, cp->a2, cp->a3, vplic_sm[0]);
+        //pr_err("--- [%d] SBI_EXT_0_1_CLEAR_IPI %lu %lu %lu %lu %u\n",
+        //        smp_processor_id(),
+        //        cp->a0, cp->a1, cp->a2, cp->a3, vplic_sm[0]);
 #endif
 		break;
 	case SBI_EXT_0_1_SEND_IPI:
@@ -337,17 +335,12 @@ int kvm_riscv_vcpu_sbi_ecall(struct kvm_vcpu *vcpu, struct kvm_run *run)
         csr_write(CSR_VSIP, 0);
 		break;
 	case SBI_TEST_LOCAL_SBI:
-        vipi_send_cnt++;
-        rvcpu = kvm_get_vcpu_by_id(vcpu->kvm, cp->a0);
-        vipi_send_cycle += csr_read(CSR_CYCLE) - cp->a1;
-        kvm_riscv_vcpu_set_interrupt(rvcpu, IRQ_VS_SOFT);
-        //pr_err("--- [%d] SBI_TEST_LOCAL_SBI %lu %lu %lu %lu sm %lu cnt %lu\n",
-        //        smp_processor_id(),
-        //        cp->a0, cp->a1, cp->a2, cp->a3, vplic_sm[0], vipi_send_cnt);
-        if (vipi_send_cnt == 10000)
-            pr_err("--- %lu %lu %lu %lu vipi_send_cycle %lu avg %lu\n",
-                    cp->a0, cp->a1, cp->a2, cp->a3,
-                    vipi_send_cycle, vipi_send_cycle / 10000);
+        vplic_sm[0] = 0;
+        csr_write(CSR_VSIP, 0);
+		kvm_riscv_vcpu_unset_interrupt(vcpu, IRQ_VS_EXT);
+        wake_up_process(
+                kthread_create_on_cpu(vplic_thread, (void *)vcpu,
+                    4, "vplic_thread"));
 		break;
 	default:
 		/* Return error for unsupported SBI calls */
