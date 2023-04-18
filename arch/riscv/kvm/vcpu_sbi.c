@@ -206,7 +206,7 @@ int kvm_riscv_vcpu_sbi_ecall(struct kvm_vcpu *vcpu, struct kvm_run *run)
 		kvm_riscv_vcpu_timer_next_event(vcpu, next_cycle);
 		break;
 	case SBI_EXT_0_1_CLEAR_IPI:
-#if 1
+#if 0
         pr_err("--- SBI_EXT_0_1_CLEAR_IPI %lu %lu %lu %lu %u\n",
                 cp->a0, cp->a1, cp->a2, cp->a3, vplic_sm[0]);
         vplic_sm[0] = 0;
@@ -217,9 +217,14 @@ int kvm_riscv_vcpu_sbi_ecall(struct kvm_vcpu *vcpu, struct kvm_run *run)
                     4, "vplic_thread"));
 #else
 		kvm_riscv_vcpu_unset_interrupt(vcpu, IRQ_VS_SOFT);
+        csr_write(CSR_VSIP, 0);
+        pr_err("--- [%d] SBI_EXT_0_1_CLEAR_IPI %lu %lu %lu %lu %u\n",
+                smp_processor_id(),
+                cp->a0, cp->a1, cp->a2, cp->a3, vplic_sm[0]);
 #endif
 		break;
 	case SBI_EXT_0_1_SEND_IPI:
+#if 0
         //pr_err("--- line %lu: %lu %lu %lu rdvipi0 %lx\n",
         //        cp->a0, cp->a1, cp->a2, cp->a3, rdvipi0());
         pr_err("--- SBI_EXT_0_1_SEND_IPI %lu %lu %lu %lu vint %x\n",
@@ -236,7 +241,7 @@ int kvm_riscv_vcpu_sbi_ecall(struct kvm_vcpu *vcpu, struct kvm_run *run)
         //if (vipi_send_cnt == 10000)
         //    pr_err("--- %lu %lu %lu %lu vipi_send_cycle %lu\n",
         //            cp->a0, cp->a1, cp->a2, cp->a3, vipi_cycle);
-#if 0
+#else
 		if (cp->a0)
 			hmask = kvm_riscv_vcpu_unpriv_read(vcpu, false, cp->a0,
 							   &utrap);
@@ -322,14 +327,27 @@ int kvm_riscv_vcpu_sbi_ecall(struct kvm_vcpu *vcpu, struct kvm_run *run)
 		break;
 	case SBI_TEST_SEND_PRINT:
         pr_err("--- SEND_PRINT: line %lu: %lx %lu %lu rdvipi0 %lx\n",
-                cp->a0, cp->a1, cp->a2, cp->a3, rdvipi0());
+                //cp->a0, cp->a1, cp->a2, cp->a3, rdvipi0());
+                cp->a0, cp->a1, cp->a2, cp->a3, smp_processor_id());
 		break;
 	case SBI_TEST_RECV_PRINT:
         pr_err("--- RECV_PRINT: line %lu: %lx %lu %lu rdvipi0 %lx vsip %lx\n",
-                cp->a0, cp->a1, cp->a2, cp->a3, rdvipi0(), csr_read(CSR_VSIP));
+                //cp->a0, cp->a1, cp->a2, cp->a3, rdvipi0(), csr_read(CSR_VSIP));
+                cp->a0, cp->a1, cp->a2, cp->a3, smp_processor_id(), csr_read(CSR_VSIP));
         csr_write(CSR_VSIP, 0);
 		break;
 	case SBI_TEST_LOCAL_SBI:
+        vipi_send_cnt++;
+        rvcpu = kvm_get_vcpu_by_id(vcpu->kvm, cp->a0);
+        vipi_send_cycle += csr_read(CSR_CYCLE) - cp->a1;
+        kvm_riscv_vcpu_set_interrupt(rvcpu, IRQ_VS_SOFT);
+        //pr_err("--- [%d] SBI_TEST_LOCAL_SBI %lu %lu %lu %lu sm %lu cnt %lu\n",
+        //        smp_processor_id(),
+        //        cp->a0, cp->a1, cp->a2, cp->a3, vplic_sm[0], vipi_send_cnt);
+        if (vipi_send_cnt == 10000)
+            pr_err("--- %lu %lu %lu %lu vipi_send_cycle %lu avg %lu\n",
+                    cp->a0, cp->a1, cp->a2, cp->a3,
+                    vipi_send_cycle, vipi_send_cycle / 10000);
 		break;
 	default:
 		/* Return error for unsupported SBI calls */

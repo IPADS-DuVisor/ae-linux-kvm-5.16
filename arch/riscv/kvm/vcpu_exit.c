@@ -438,7 +438,8 @@ static int stage2_page_fault(struct kvm_vcpu *vcpu, struct kvm_run *run,
 	if (kvm_is_error_hva(hva) ||
 	    (trap->scause == EXC_STORE_GUEST_PAGE_FAULT && !writeable)) {
 #if 1
-        bool is_vplic = (0xc000000 <= fault_addr && fault_addr < (0xc000000 + 0x2000000));
+        //bool is_vplic = (0xc000000 <= fault_addr && fault_addr < (0xc000000 + 0x2000000));
+        bool is_vplic = false;
         bool is_sm = (0xe000000 <= fault_addr && fault_addr < (0xe000000 + 0x1000));
         if (unlikely(is_vplic || is_sm)) {
             printk("%s:%d err: %d, gpa: %lx, scause: %ld\n", __func__, __LINE__,
